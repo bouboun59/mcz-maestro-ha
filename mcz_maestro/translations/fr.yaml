@@ -1,0 +1,64 @@
+configuration:
+  connection_mode:
+    name: Mode de connexion
+    description: "local = websocket direct sur le module Maestro ; cloud = serveur MCZ (app Maestro classique)"
+  local_host:
+    name: Adresse du poêle (local)
+    description: 192.168.120.1 si HA est relié au point d'accès du poêle, sinon l'IP du poêle sur votre réseau
+  local_port:
+    name: Port websocket (local)
+  cloud_url:
+    name: Serveur cloud MCZ
+  cloud_serial:
+    name: Numéro de série (cloud)
+    description: Visible dans l'app Maestro (Réglages > Info)
+  cloud_mac:
+    name: Adresse MAC (cloud)
+    description: Sans séparateurs, visible dans l'app Maestro
+  refresh_interval:
+    name: Intervalle de rafraîchissement (s)
+  command_delay:
+    name: Délai entre deux commandes (s)
+  auto_regulation:
+    name: Bascule auto de la régulation
+    description: Passe en régulation auto quand on change la consigne, en manuel quand on change la puissance
+  publish_on_change_only:
+    name: Publier seulement les changements
+  ducted_fans:
+    name: Nombre de ventilateurs canalisés
+  hydro:
+    name: Poêle hydro
+    description: Expose les températures chaudière / puffer / retour
+  min_temp:
+    name: Consigne mini (°C)
+  max_temp:
+    name: Consigne maxi (°C)
+  mqtt_host:
+    name: Broker MQTT
+    description: Laisser vide pour utiliser automatiquement l'add-on Mosquitto
+  mqtt_port:
+    name: Port MQTT
+  mqtt_user:
+    name: Utilisateur MQTT
+  mqtt_password:
+    name: Mot de passe MQTT
+  discovery:
+    name: Découverte automatique HA
+  discovery_prefix:
+    name: Préfixe de découverte
+  base_topic:
+    name: Topic de base
+  device_name:
+    name: Nom de l'appareil
+  device_id:
+    name: Identifiant de l'appareil
+    description: Sert aux unique_id et entity_id (ex. climate.mcz_poele_climate)
+  legacy_enabled:
+    name: Compatibilité ancien add-on
+    description: Publie le JSON historique et accepte les commandes « 34,1;42,21 »
+  legacy_topic_pub:
+    name: Topic historique d'état
+  legacy_topic_sub:
+    name: Topic historique de commande
+  log_level:
+    name: Niveau de log

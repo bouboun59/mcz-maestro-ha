@@ -1,0 +1,63 @@
+name: MCZ Maestro HA
+version: "1.0.0"
+slug: mcz_maestro_ha
+description: Poêle MCZ Maestro (classique) dans Home Assistant — mode local ou cloud, découverte MQTT automatique
+url: https://github.com/bouboun59/mcz-maestro-ha
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: application
+boot: auto
+services:
+  - mqtt:want
+options:
+  connection_mode: local
+  local_host: 192.168.120.1
+  local_port: 81
+  cloud_url: http://app.mcz.it:9000
+  cloud_serial: ""
+  cloud_mac: ""
+  refresh_interval: 15
+  auto_regulation: true
+  ducted_fans: 0
+  hydro: false
+  min_temp: 5
+  max_temp: 35
+  discovery: true
+  discovery_prefix: homeassistant
+  base_topic: mcz_maestro
+  device_name: Poêle MCZ
+  device_id: poele
+  legacy_enabled: false
+  legacy_topic_pub: Maestro/State
+  legacy_topic_sub: Maestro/Command
+  log_level: info
+schema:
+  connection_mode: list(local|cloud)
+  local_host: str
+  local_port: port
+  cloud_url: url
+  cloud_serial: str?
+  cloud_mac: str?
+  refresh_interval: int(5,300)
+  command_delay: float(0.2,5)?
+  auto_regulation: bool
+  publish_on_change_only: bool?
+  ducted_fans: int(0,2)
+  hydro: bool
+  min_temp: float(5,20)
+  max_temp: float(20,40)
+  mqtt_host: str?
+  mqtt_port: port?
+  mqtt_user: str?
+  mqtt_password: password?
+  discovery: bool
+  discovery_prefix: str
+  base_topic: str
+  device_name: str
+  device_id: match(^[a-z0-9_]+$)
+  legacy_enabled: bool
+  legacy_topic_pub: str?
+  legacy_topic_sub: str?
+  log_level: list(debug|info|warning|error)

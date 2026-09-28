@@ -1,0 +1,63 @@
+configuration:
+  connection_mode:
+    name: Connection mode
+    description: local = direct websocket to the Maestro module; cloud = MCZ server
+      (classic Maestro app)
+  local_host:
+    name: Stove address (local)
+    description: 192.168.120.1 when HA is joined to the stove access point, otherwise
+      the stove's LAN IP
+  local_port:
+    name: Websocket port (local)
+  cloud_url:
+    name: MCZ cloud server
+  cloud_serial:
+    name: Serial number (cloud)
+  cloud_mac:
+    name: MAC address (cloud)
+    description: Without separators
+  refresh_interval:
+    name: Refresh interval (s)
+  command_delay:
+    name: Delay between commands (s)
+  auto_regulation:
+    name: Automatic regulation switch
+    description: Auto regulation when setpoint changes, manual when power level changes
+  publish_on_change_only:
+    name: Publish changes only
+  ducted_fans:
+    name: Number of ducted fans
+  hydro:
+    name: Hydro stove
+  min_temp:
+    name: Minimum setpoint (°C)
+  max_temp:
+    name: Maximum setpoint (°C)
+  mqtt_host:
+    name: MQTT broker
+    description: Leave empty to use the Mosquitto add-on automatically
+  mqtt_port:
+    name: MQTT port
+  mqtt_user:
+    name: MQTT user
+  mqtt_password:
+    name: MQTT password
+  discovery:
+    name: HA MQTT discovery
+  discovery_prefix:
+    name: Discovery prefix
+  base_topic:
+    name: Base topic
+  device_name:
+    name: Device name
+  device_id:
+    name: Device id
+  legacy_enabled:
+    name: Legacy compatibility
+    description: Publishes the legacy JSON and accepts "34,1;42,21" commands
+  legacy_topic_pub:
+    name: Legacy state topic
+  legacy_topic_sub:
+    name: Legacy command topic
+  log_level:
+    name: Log level

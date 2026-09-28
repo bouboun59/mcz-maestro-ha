@@ -1,0 +1,4 @@
+# https://developers.home-assistant.io/docs/add-ons/repository#repository-configuration
+name: MCZ Maestro HA (bouboun59)
+url: https://github.com/bouboun59/mcz-maestro-ha
+maintainer: bouboun59
