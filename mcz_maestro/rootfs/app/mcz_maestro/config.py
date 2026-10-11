@@ -21,6 +21,7 @@ class Config:
     cloud_mac: str = ""
     # comportement
     refresh_interval: float = 15.0
+    unavailable_after: float = 180.0       # s sans trame avant de passer les entités « indisponibles »
     command_delay: float = 0.7
     auto_regulation: bool = True
     publish_on_change_only: bool = False
@@ -58,6 +59,7 @@ class Config:
             raise ValueError("Aucun broker MQTT (ni option mqtt_host, ni service MQTT Supervisor)")
         self.device_id = re.sub(r"[^a-z0-9_]", "_", self.device_id.lower()) or "poele"
         self.refresh_interval = max(5.0, float(self.refresh_interval))
+        self.unavailable_after = max(float(self.unavailable_after), self.refresh_interval * 3)
         self.ducted_fans = max(0, min(2, int(self.ducted_fans)))
 
 

@@ -18,6 +18,9 @@ configuration:
     description: Without separators
   refresh_interval:
     name: Refresh interval (s)
+  unavailable_after:
+    name: Unavailable after (s)
+    description: "Time without stove data before entities become unavailable (short Wi-Fi drops are ignored)"
   command_delay:
     name: Delay between commands (s)
   auto_regulation:

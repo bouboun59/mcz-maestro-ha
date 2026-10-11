@@ -17,6 +17,9 @@ configuration:
     description: Sans séparateurs, visible dans l'app Maestro
   refresh_interval:
     name: Intervalle de rafraîchissement (s)
+  unavailable_after:
+    name: Délai avant indisponibilité (s)
+    description: "Durée sans réponse du poêle avant de passer les entités en « indisponible » (les micro-coupures Wi-Fi sont ignorées)"
   command_delay:
     name: Délai entre deux commandes (s)
   auto_regulation:

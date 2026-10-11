@@ -1,5 +1,5 @@
 name: MCZ Maestro HA
-version: "1.0.0"
+version: "1.0.1"
 slug: mcz_maestro_ha
 description: Poêle MCZ Maestro (classique) dans Home Assistant — mode local ou cloud, découverte MQTT automatique
 url: https://github.com/bouboun59/mcz-maestro-ha
@@ -19,6 +19,7 @@ options:
   cloud_serial: ""
   cloud_mac: ""
   refresh_interval: 15
+  unavailable_after: 180
   auto_regulation: true
   ducted_fans: 0
   hydro: false
@@ -41,6 +42,7 @@ schema:
   cloud_serial: str?
   cloud_mac: str?
   refresh_interval: int(5,300)
+  unavailable_after: int(30,3600)
   command_delay: float(0.2,5)?
   auto_regulation: bool
   publish_on_change_only: bool?

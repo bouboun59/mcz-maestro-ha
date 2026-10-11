@@ -35,6 +35,8 @@ class Gateway:
         self._pending_lock = threading.Lock()
         self._refresh_now = threading.Event()
         self._last_frame = 0.0
+        self._connected_at = 0.0
+        self._stale_after = max(45.0, cfg.refresh_interval * 3)
         self._stove_online: bool | None = None
         self._last_state: dict[str, Any] = {}
         self._stop = threading.Event()
@@ -144,13 +146,20 @@ class Gateway:
             self._refresh_now.clear()
             if self.transport.connected:
                 self.transport.send(P.INFO_REQUEST)
+                ref = max(self._last_frame, self._connected_at)
+                if ref and time.time() - ref > self._stale_after:
+                    _LOG.warning("Aucune trame depuis %.0f s, reconnexion", time.time() - ref)
+                    self._connected_at = time.time()
+                    self.transport.reconnect()
             self._publish_stove_status()
 
     # ====================================================== trames poêle
     def _on_transport_status(self, connected: bool) -> None:
+        # Une coupure brève ne rend pas les entités indisponibles : seule l'absence de trame
+        # pendant « unavailable_after » secondes le fait (voir _stove_is_online).
         if connected:
+            self._connected_at = time.time()
             self._refresh_now.set()
-        self._publish_stove_status()
 
     def _on_frame(self, frame: str) -> None:
         if not P.is_info_frame(frame):
@@ -177,11 +186,9 @@ class Gateway:
             self.mqtt.publish(self.cfg.legacy_topic_pub, json.dumps(legacy), qos=1)
 
     def _stove_is_online(self) -> bool:
-        if not self.transport.connected:
+        if self._last_frame == 0.0:
             return False
-        timeout = max(60.0, self.cfg.refresh_interval * 4)
-        # au démarrage on laisse le temps à la première trame d'arriver
-        return self._last_frame == 0.0 or (time.time() - self._last_frame) < timeout
+        return (time.time() - self._last_frame) < self.cfg.unavailable_after
 
     def _publish_stove_status(self, force: bool = False) -> None:
         online = self._stove_is_online()
@@ -384,7 +391,7 @@ class Gateway:
         threading.Thread(target=self._poller, name="poller", daemon=True).start()
         self.transport.start()
         try:
-            while not self._stop.wait(30):
+            while not self._stop.wait(10):
                 self._publish_stove_status()
         finally:
             self.shutdown()

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+- Fini les « indisponible » intempestifs : suppression du ping/pong websocket (mal géré par le module Maestro, coupures toutes les 1 à 3 min)
+- Les entités ne passent indisponibles qu'après `unavailable_after` secondes sans données (180 s par défaut), plus à chaque micro-coupure
+- Chien de garde : reconnexion automatique si le poêle ne répond plus, reconnexion plus rapide (2 s → 30 s max)
+
 ## 1.0.0
 
 - Première version : choix `connection_mode` local / cloud, découverte MQTT Home Assistant,

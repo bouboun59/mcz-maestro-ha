@@ -44,6 +44,9 @@ class Transport:
     def send(self, message: str) -> bool:
         raise NotImplementedError
 
+    def reconnect(self) -> None:
+        """Force une reconnexion (chien de garde : plus aucune trame reçue)."""
+
     def _run(self) -> None:
         raise NotImplementedError
 
@@ -59,6 +62,16 @@ class LocalTransport(Transport):
         self._url = f"ws://{host}:{port}"
         self._ws = None
         self._lock = threading.Lock()
+
+    def reconnect(self) -> None:
+        with self._lock:
+            ws = self._ws
+        if ws is not None:
+            _LOG.info("[local] reconnexion forcée")
+            try:
+                ws.close()
+            except Exception:  # noqa: BLE001
+                pass
 
     def send(self, message: str) -> bool:
         with self._lock:
@@ -76,13 +89,14 @@ class LocalTransport(Transport):
     def _run(self) -> None:
         import websocket  # websocket-client
 
-        backoff = 5
+        websocket.setdefaulttimeout(10)
+        backoff = 2
         while not self._stop.is_set():
             _LOG.info("[local] connexion à %s", self._url)
 
             def on_open(ws):
                 nonlocal backoff
-                backoff = 5
+                backoff = 2
                 self._set_connected(True)
 
             def on_message(ws, message):
@@ -104,7 +118,9 @@ class LocalTransport(Transport):
             with self._lock:
                 self._ws = app
             try:
-                app.run_forever(ping_interval=10, ping_timeout=5, suppress_origin=True)
+                # Pas de ping/pong websocket : le module Maestro y répond mal (coupures toutes les
+                # 1 à 3 min). La santé du lien est surveillée par le chien de garde du Gateway.
+                app.run_forever(suppress_origin=True)
             except Exception:  # noqa: BLE001
                 _LOG.exception("[local] run_forever a levé une exception")
             self._set_connected(False)
@@ -112,7 +128,7 @@ class LocalTransport(Transport):
                 self._ws = None
             if self._stop.wait(backoff):
                 break
-            backoff = min(backoff * 2, 60)
+            backoff = min(backoff * 2, 30)
 
 
 # --------------------------------------------------------------------------- #
@@ -128,6 +144,15 @@ class CloudTransport(Transport):
         self._serial = serial.strip()
         self._mac = mac.strip().replace(":", "").replace("-", "")
         self._sio = None
+
+    def reconnect(self) -> None:
+        sio = self._sio
+        if sio is not None:
+            _LOG.info("[cloud] reconnexion forcée")
+            try:
+                sio.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
 
     def _ident(self) -> dict:
         return {"serialNumber": self._serial, "macAddress": self._mac}
