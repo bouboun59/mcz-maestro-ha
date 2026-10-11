@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1
+
+- Capteurs « Active » (valeur mesurée) et « Active consigne » (valeur réglée) du mode Active
+
 ## 1.1.0
 
 - Nouveau : réglages de combustion « Recette air » (-2 à +2) et « Recette granulés » (-3 à +3), comme dans l'app MCZ

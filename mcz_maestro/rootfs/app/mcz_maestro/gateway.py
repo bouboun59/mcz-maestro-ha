@@ -336,6 +336,10 @@ class Gateway:
             ("profile", "Profil", "profile", {"icon": "mdi:tune", "value_template":
                 "{{ {0:'Manuel',1:'Dynamic',2:'Overnight',3:'Comfort',4:'Power 110%',10:'Adaptatif'}"
                 ".get(value_json.profile, value_json.profile) }}"}),
+            ("active_set", "Active consigne", "active_set",
+             {"icon": "mdi:fire-circle", "state_class": "measurement"}),
+            ("active_live", "Active", "active_live",
+             {"icon": "mdi:fire-circle", "state_class": "measurement"}),
             ("fumes_fan_rpm", "Extracteur fumées", "fumes_fan_rpm",
              {"unit_of_measurement": "rpm", "state_class": "measurement", "icon": "mdi:fan", "entity_category": "diagnostic"}),
             ("auger_rpm", "Vis sans fin", "auger_rpm_live",
