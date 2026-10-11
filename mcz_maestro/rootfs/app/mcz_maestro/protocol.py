@@ -9,7 +9,9 @@ from dataclasses import dataclass
 from typing import Any
 
 INFO_REQUEST = "C|RecuperoInfo"
+EXTRA_REQUEST = "C|RecuperoParametriExtra|11"
 MSG_TYPE_INFO = "01"
+MSG_TYPE_EXTRA = "03"
 
 # --------------------------------------------------------------------------- #
 # États du poêle : code -> (libellé FR, allumé ?)
@@ -157,6 +159,47 @@ def is_info_frame(message: str) -> bool:
     return isinstance(message, str) and message.split("|", 1)[0] == MSG_TYPE_INFO
 
 
+# --------------------------------------------------------------------------- #
+# Recettes de combustion (« Ricetta Aria » / « Ricetta Pellet » de l'app MCZ)
+# Lecture : C|RecuperoParametriExtra|11 -> 03|<air>|<pellets>|<entrée ambiance>|...
+# Écriture : C|WriteBancaDati|<cellule>|1|<valeur hex 2 chiffres>
+# --------------------------------------------------------------------------- #
+AIR_RECIPE_OPTIONS = ["-2", "-1", "0", "+1", "+2"]                  # valeurs 0..4
+PELLET_RECIPE_OPTIONS = ["-3", "-2", "-1", "0", "+1", "+2", "+3"]   # valeurs 0..6
+BANK_AIR_RECIPE = 459
+BANK_PELLET_RECIPE = 460
+BANK_OFFSET = 100000   # identifiant interne : >= BANK_OFFSET = cellule de la banque de données
+
+
+def is_extra_frame(message: str) -> bool:
+    return isinstance(message, str) and message.split("|", 1)[0] == MSG_TYPE_EXTRA
+
+
+def parse_extra_frame(message: str) -> dict[str, Any]:
+    raw = message.strip().split("|")
+    out: dict[str, Any] = {}
+    for idx, key, opts in ((1, "air_recipe", AIR_RECIPE_OPTIONS), (2, "pellet_recipe", PELLET_RECIPE_OPTIONS)):
+        if idx < len(raw):
+            try:
+                v = int(raw[idx], 16)
+            except ValueError:
+                continue
+            if 0 <= v < len(opts):
+                out[key] = opts[v]
+    return out
+
+
+def _recipe(cell: int, opts: list[str]):
+    def build(payload: str) -> list[tuple[int, int]]:
+        p = str(payload).strip()
+        if p and p[0].isdigit() and p != "0":
+            p = "+" + p
+        if p not in opts:
+            raise ValueError(f"valeur attendue parmi {opts}")
+        return [(BANK_OFFSET + cell, opts.index(p))]
+    return build
+
+
 def parse_info_frame(message: str) -> tuple[dict[str, Any], dict[str, Any]]:
     """Décode une trame « 01|... ».
 
@@ -269,6 +312,8 @@ PARAM_RESET_ALARM = 1
 
 
 def write_param(param_id: int, value: int) -> str:
+    if param_id >= BANK_OFFSET:
+        return f"C|WriteBancaDati|{int(param_id) - BANK_OFFSET}|1|{int(value):02X}"
     return f"C|WriteParametri|{int(param_id)}|{int(value)}"
 
 
@@ -325,6 +370,8 @@ def build_commands(name: str, payload: str, auto_regulation: bool = True) -> lis
         "pellet_sensor": _onoff(PARAM_PELLET_SENSOR),
         "boiler_setpoint": lambda p: [(PARAM_BOILER_SETPOINT, _temp(p))],
         "reset_alarm": lambda p: [(PARAM_RESET_ALARM, 255)],
+        "air_recipe": _recipe(BANK_AIR_RECIPE, AIR_RECIPE_OPTIONS),
+        "pellet_recipe": _recipe(BANK_PELLET_RECIPE, PELLET_RECIPE_OPTIONS),
     }
     if name not in table:
         raise KeyError(name)

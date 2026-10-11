@@ -33,3 +33,11 @@ def test_commands():
     assert P.build_commands("fan_ambient", "auto") == [(37, 6)]
     assert P.parse_legacy_commands("34,1;42,21") == [(34, 1), (42, 42)]
     assert P.write_param(34, 1) == "C|WriteParametri|34|1"
+
+
+def test_recipes():
+    assert P.parse_extra_frame("03|03|02|ff|3c|02") == {"air_recipe": "+1", "pellet_recipe": "-1"}
+    assert P.build_commands("air_recipe", "+1") == [(P.BANK_OFFSET + 459, 3)]
+    assert P.build_commands("pellet_recipe", "2") == [(P.BANK_OFFSET + 460, 5)]
+    assert P.write_param(P.BANK_OFFSET + 459, 3) == "C|WriteBancaDati|459|1|03"
+    assert P.write_param(P.BANK_OFFSET + 460, 0) == "C|WriteBancaDati|460|1|00"

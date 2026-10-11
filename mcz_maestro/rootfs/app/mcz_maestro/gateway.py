@@ -39,6 +39,8 @@ class Gateway:
         self._stale_after = max(45.0, cfg.refresh_interval * 3)
         self._stove_online: bool | None = None
         self._last_state: dict[str, Any] = {}
+        self._extra: dict[str, Any] = {}
+        self._extra_due = 0.0
         self._stop = threading.Event()
 
         # ---- MQTT
@@ -135,6 +137,8 @@ class Gateway:
             else:
                 _LOG.error("Commande perdue (poêle injoignable) : %s", msg)
             time.sleep(self.cfg.command_delay)
+            if param >= P.BANK_OFFSET:
+                self._extra_due = 0.0          # relire les recettes après écriture
             if self._cmd_q.empty():
                 time.sleep(1.0)
                 self._refresh_now.set()
@@ -146,6 +150,10 @@ class Gateway:
             self._refresh_now.clear()
             if self.transport.connected:
                 self.transport.send(P.INFO_REQUEST)
+                if time.time() >= self._extra_due:   # recettes : au démarrage, après écriture, puis /10 min
+                    self._extra_due = time.time() + 600
+                    time.sleep(0.5)
+                    self.transport.send(P.EXTRA_REQUEST)
                 ref = max(self._last_frame, self._connected_at)
                 if ref and time.time() - ref > self._stale_after:
                     _LOG.warning("Aucune trame depuis %.0f s, reconnexion", time.time() - ref)
@@ -159,9 +167,19 @@ class Gateway:
         # pendant « unavailable_after » secondes le fait (voir _stove_is_online).
         if connected:
             self._connected_at = time.time()
+            self._extra_due = 0.0
             self._refresh_now.set()
 
     def _on_frame(self, frame: str) -> None:
+        if P.is_extra_frame(frame):
+            extra = P.parse_extra_frame(frame)
+            if extra and extra != self._extra:
+                _LOG.info("Recettes : %s", extra)
+                self._extra = extra
+                if self._last_state:
+                    self._last_state.update(extra)
+                    self.mqtt.publish(self.t_state, json.dumps(self._last_state), qos=1, retain=True)
+            return
         if not P.is_info_frame(frame):
             _LOG.debug("Trame ignorée : %s", str(frame)[:60])
             return
@@ -171,6 +189,7 @@ class Gateway:
             _LOG.exception("Trame illisible : %s", frame)
             return
         self._last_frame = time.time()
+        modern.update(self._extra)
         modern["connection_mode"] = self.cfg.connection_mode
         modern["last_update"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         self._publish_stove_status()
@@ -272,6 +291,12 @@ class Gateway:
                    value_template="{{ value_json.power_level | string }}",
                    command_topic=f"{s}power_level", options=["1", "2", "3", "4", "5"],
                    icon="mdi:fire")
+        self._disc("select", "air_recipe", "Recette air", state_topic=st,
+                   value_template=self._vt("air_recipe"), command_topic=f"{s}air_recipe",
+                   options=P.AIR_RECIPE_OPTIONS, icon="mdi:weather-windy", entity_category="config")
+        self._disc("select", "pellet_recipe", "Recette granulés", state_topic=st,
+                   value_template=self._vt("pellet_recipe"), command_topic=f"{s}pellet_recipe",
+                   options=P.PELLET_RECIPE_OPTIONS, icon="mdi:grain", entity_category="config")
         self._disc("select", "regulation", "Régulation", state_topic=st,
                    value_template=self._vt("regulation"), command_topic=f"{s}regulation",
                    options=["auto", "manual"], icon="mdi:thermostat-auto")

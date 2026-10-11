@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0
+
+- Nouveau : réglages de combustion « Recette air » (-2 à +2) et « Recette granulés » (-3 à +3), comme dans l'app MCZ
+  (lecture `C|RecuperoParametriExtra|11` au démarrage, après écriture et toutes les 10 min ; écriture `C|WriteBancaDati`)
+
 ## 1.0.1
 
 - Fini les « indisponible » intempestifs : suppression du ping/pong websocket (mal géré par le module Maestro, coupures toutes les 1 à 3 min)

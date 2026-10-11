@@ -46,6 +46,9 @@ Le broker MQTT est récupéré automatiquement depuis l'add-on Mosquitto : laiss
   heures avant entretien, nb d'allumages, RPM extracteur / vis sans fin, horloge du poêle…
 - `binary_sensor` : en chauffe, alarme, pellets bas, bougie, connexion poêle
 
+Réglages de combustion (`select`, catégorie configuration) : **Recette air** (-2 à +2) et **Recette granulés** (-3 à +3).
+Ils sont écrits dans la mémoire du poêle : à modifier à la main, pas depuis une automatisation répétitive.
+
 Avec `hydro: true` : températures chaudière / puffer / retour et consigne chaudière.
 
 `auto_regulation: true` reproduit le comportement de l'ancien script local : changer la consigne
@@ -57,7 +60,7 @@ passe la régulation en **auto**, changer la puissance la passe en **manuel**.
 |---|---|---|
 | `mcz_maestro/state` | publié | JSON complet (retenu) |
 | `mcz_maestro/bridge/status` / `mcz_maestro/stove/status` | publié | `online` / `offline` |
-| `mcz_maestro/set/<commande>` | commande | `power`, `setpoint`, `power_level`, `fan_ambient`, `fan_ducted1`, `fan_ducted2`, `regulation`, `eco`, `silent`, `active`, `chrono`, `sound`, `sleep`, `summer`, `antifreeze`, `adaptive`, `pellet_sensor`, `boiler_setpoint`, `reset_alarm`, `refresh` |
+| `mcz_maestro/set/<commande>` | commande | `power`, `setpoint`, `power_level`, `fan_ambient`, `fan_ducted1`, `fan_ducted2`, `regulation`, `eco`, `silent`, `active`, `chrono`, `sound`, `sleep`, `summer`, `antifreeze`, `adaptive`, `pellet_sensor`, `boiler_setpoint`, `air_recipe` (-2…+2), `pellet_recipe` (-3…+3), `reset_alarm`, `refresh` |
 | `mcz_maestro/raw_command` | commande | brut `id,valeur` ou multiple `id,valeur;id,valeur` |
 
 ### Compatibilité avec l'ancien add-on (`legacy_enabled`, **désactivé par défaut**)
