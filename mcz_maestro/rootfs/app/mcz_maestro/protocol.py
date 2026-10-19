@@ -353,7 +353,8 @@ def build_commands(name: str, payload: str, auto_regulation: bool = True) -> lis
         "power": lambda p: [(PARAM_POWER, 1 if _truthy(p) else 40)],
         "hvac_mode": lambda p: [(PARAM_POWER, 1 if _truthy(p) else 40)],
         "setpoint": lambda p: ([(PARAM_REGULATION, 1)] if auto_regulation else []) + [(PARAM_SETPOINT, _temp(p))],
-        "power_level": lambda p: ([(PARAM_REGULATION, 0)] if auto_regulation else []) + [(PARAM_POWER_LEVEL, _level(p))],
+        # La puissance n'est prise en compte qu'en régulation manuelle : on y bascule toujours
+        "power_level": lambda p: [(PARAM_REGULATION, 0), (PARAM_POWER_LEVEL, _level(p))],
         "regulation": lambda p: [(PARAM_REGULATION, 1 if str(p).strip().lower() in ("auto", "1", "on") else 0)],
         "fan_ambient": lambda p: [(PARAM_FAN_AMBIENT, _fan(p))],
         "fan_ducted1": lambda p: [(PARAM_FAN_DUCTED1, _fan(p))],

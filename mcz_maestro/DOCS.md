@@ -51,8 +51,8 @@ Ils sont écrits dans la mémoire du poêle : à modifier à la main, pas depuis
 
 Avec `hydro: true` : températures chaudière / puffer / retour et consigne chaudière.
 
-`auto_regulation: true` reproduit le comportement de l'ancien script local : changer la consigne
-passe la régulation en **auto**, changer la puissance la passe en **manuel**.
+Changer la **puissance** passe toujours le poêle en régulation **manuelle** (sinon la puissance est ignorée).
+`auto_regulation: true` repasse en régulation **auto** quand on change la consigne.
 
 ## Topics MQTT
 

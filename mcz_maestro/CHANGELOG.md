@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.2
+
+- Choisir une puissance passe toujours le poêle en régulation manuelle (sinon la commande était ignorée)
+
 ## 1.1.1
 
 - Capteurs « Active » (valeur mesurée) et « Active consigne » (valeur réglée) du mode Active

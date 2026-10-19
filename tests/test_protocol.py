@@ -30,6 +30,7 @@ def test_commands():
     assert P.build_commands("setpoint", "22.5") == [(40, 1), (42, 45)]
     assert P.build_commands("setpoint", "22.5", auto_regulation=False) == [(42, 45)]
     assert P.build_commands("power", "OFF") == [(34, 40)]
+    assert P.build_commands("power_level", "4", auto_regulation=False) == [(40, 0), (36, 4)]
     assert P.build_commands("fan_ambient", "auto") == [(37, 6)]
     assert P.parse_legacy_commands("34,1;42,21") == [(34, 1), (42, 42)]
     assert P.write_param(34, 1) == "C|WriteParametri|34|1"

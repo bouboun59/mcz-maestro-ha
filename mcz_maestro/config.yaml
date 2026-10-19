@@ -1,5 +1,5 @@
 name: MCZ Maestro HA
-version: "1.1.1"
+version: "1.1.2"
 slug: mcz_maestro_ha
 description: Poêle MCZ Maestro (classique) dans Home Assistant — mode local ou cloud, découverte MQTT automatique
 url: https://github.com/bouboun59/mcz-maestro-ha

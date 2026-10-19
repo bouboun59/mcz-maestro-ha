@@ -25,7 +25,7 @@ configuration:
     name: Delay between commands (s)
   auto_regulation:
     name: Automatic regulation switch
-    description: Auto regulation when setpoint changes, manual when power level changes
+    description: "Switch back to auto regulation when the setpoint changes (power level always switches to manual)"
   publish_on_change_only:
     name: Publish changes only
   ducted_fans:

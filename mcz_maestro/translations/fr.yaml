@@ -24,7 +24,7 @@ configuration:
     name: Délai entre deux commandes (s)
   auto_regulation:
     name: Bascule auto de la régulation
-    description: Passe en régulation auto quand on change la consigne, en manuel quand on change la puissance
+    description: "Repasse en régulation auto quand on change la consigne (la puissance bascule toujours en manuel)"
   publish_on_change_only:
     name: Publier seulement les changements
   ducted_fans:
