@@ -11,7 +11,9 @@ Corrections :
 - **Cellule 149** : c'est le profil de chauffe (0–4, +10 adaptatif), plus un simple on/off
 
 Nouveautés :
-- `select` **Profil de chauffe** (manual / dynamic / overnight / comfort / power) et switch **Mode adaptatif** (désactivé par défaut)
+- Option `adaptive` (désactivée par défaut) : sur les poêles adaptatifs seulement, `select` **Profil de chauffe**
+  (manual / dynamic / overnight / comfort / power) et switch **Mode adaptatif**, comme l'app MCZ.
+  Sur les autres poêles, le capteur « Profil » est supprimé : il affichait une valeur sans signification (ex. « Power 110% »)
 - `number` **Minuterie sleep** (0–490 min) et températures **chrono T1 / T2 / T3**
 - `button` **Réinitialiser Active** et **Mettre le poêle à l'heure**
 - `sensor` **Dernière alarme** avec historique horodaté (`C|RecuperaAllarmi`), **Programme chrono** du jour + semaine

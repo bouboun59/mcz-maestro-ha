@@ -328,14 +328,19 @@ class Gateway:
         self._disc("select", "regulation", "Régulation", state_topic=st,
                    value_template=self._vt("regulation"), command_topic=f"{s}regulation",
                    options=["auto", "manual"], icon="mdi:thermostat-auto")
-        # Profil de chauffe (cellule 149) — comme les boutons Manual/Dynamic/Overnight/Comfort/Power de l'app
-        self._disc("select", "profile_mode", "Profil de chauffe", state_topic=st,
-                   value_template=self._vt("profile_mode"), command_topic=f"{s}profile",
-                   options=P.PROFILE_OPTIONS, icon="mdi:tune-variant")
-        self._disc("switch", "adaptive", "Mode adaptatif", state_topic=st,
-                   value_template=self._vt("adaptive_sw"), command_topic=f"{s}adaptive",
-                   payload_on="ON", payload_off="OFF", state_on="ON", state_off="OFF",
-                   icon="mdi:brain", entity_category="config", enabled_by_default=False)
+        # Profil de chauffe (cellule 149) : uniquement sur les poêles adaptatifs, comme l'app MCZ.
+        # Sur les autres, l'app n'offre que Manual / Dynamic = select « Régulation » (cellule 40).
+        if self.cfg.adaptive:
+            self._disc("select", "profile_mode", "Profil de chauffe", state_topic=st,
+                       value_template=self._vt("profile_mode"), command_topic=f"{s}profile",
+                       options=P.PROFILE_OPTIONS, icon="mdi:tune-variant")
+            self._disc("switch", "adaptive", "Mode adaptatif", state_topic=st,
+                       value_template=self._vt("adaptive_sw"), command_topic=f"{s}adaptive",
+                       payload_on="ON", payload_off="OFF", state_on="ON", state_off="OFF",
+                       icon="mdi:brain", entity_category="config")
+        else:
+            self._remove("select", "profile_mode")
+            self._remove("switch", "adaptive")
         fans = [("fan_ambient", "Ventilation ambiance")]
         if self.cfg.ducted_fans >= 1:
             fans.append(("fan_ducted1", "Ventilation canalisée 1"))
@@ -429,6 +434,10 @@ class Gateway:
                 "json_attributes_topic": st,
                 "json_attributes_template": "{{ value_json.chrono_schedule | default({}) | tojson }}"}),
         ]
+        if not self.cfg.adaptive:
+            # le champ « profil » n'a pas de sens hors mode adaptatif (affichait p. ex. « Power 110% »)
+            sensors = [x for x in sensors if x[0] != "profile"]
+            self._remove("sensor", "profile")
         for i in (1, 2, 3):
             sensors.append((f"wifi_probe{i}", f"Sonde WiFi {i}", f"wifi_probe{i}", {
                 **temp, "entity_category": "diagnostic", "enabled_by_default": False,

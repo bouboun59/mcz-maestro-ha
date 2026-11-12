@@ -40,15 +40,17 @@ Le broker MQTT est récupéré automatiquement depuis l'add-on Mosquitto : laiss
 
 - `climate` : marche/arrêt, consigne (pas de 0,5 °C), température ambiante, ventilation ambiance
 - `switch` : marche, Eco, Silence, Chronothermostat, Active, effets sonores, mode été, antigel
-- `select` : puissance 1–5, régulation auto/manuel, **profil de chauffe** (manual / dynamic / overnight /
-  comfort / power), ventilation ambiance (+ canalisées selon `ducted_fans`)
+- `select` : puissance 1–5, régulation auto/manuel (= Dynamic / Manual de l'app MCZ), ventilation ambiance
+  (+ canalisées selon `ducted_fans`)
 - `number` : consigne, **minuterie sleep** (0–490 min, pas de 10 min), **températures chrono T1 / T2 / T3**
 - `button` : acquitter l'alarme, **réinitialiser Active**, **mettre le poêle à l'heure**, rafraîchir
-- `sensor` : état, températures (ambiante, fumées, carte mère, Active), profil, heures de fonctionnement,
+- `sensor` : état, températures (ambiante, fumées, carte mère, Active), heures de fonctionnement,
   heures avant entretien, nb d'allumages, RPM extracteur / vis sans fin, horloge du poêle, **firmware**,
   **dernière alarme** (+ historique horodaté en attributs), **programme chrono du jour** (+ semaine en attributs),
   sondes WiFi 1–3 (désactivées par défaut)
-- `switch` (désactivé par défaut) : **mode adaptatif**, à n'activer que si votre poêle le propose dans l'app MCZ
+- avec `adaptive: true` uniquement : `select` **profil de chauffe** (manual / dynamic / overnight / comfort / power),
+  `switch` **mode adaptatif** et capteur **profil**. N'activez cette option que si l'app MCZ affiche les modes
+  Comfort / Overnight / Power ; sinon votre poêle ne connaît que Manual / Dynamic (select « Régulation »).
 - `binary_sensor` : en chauffe, alarme, pellets bas, bougie, connexion poêle
 
 Réglages de combustion (`select`, catégorie configuration) : **Recette air** (-2 à +2) et **Recette granulés** (-3 à +3).

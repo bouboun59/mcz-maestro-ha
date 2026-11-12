@@ -32,6 +32,9 @@ configuration:
     name: Number of ducted fans
   hydro:
     name: Hydro stove
+  adaptive:
+    name: Adaptive stove
+    description: Enable only if the MCZ app offers Comfort / Overnight / Power modes. Otherwise use "Regulation" (manual / auto = Dynamic)
   min_temp:
     name: Minimum setpoint (°C)
   max_temp:

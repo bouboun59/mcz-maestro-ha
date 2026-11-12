@@ -23,6 +23,7 @@ options:
   auto_regulation: true
   ducted_fans: 0
   hydro: false
+  adaptive: false
   min_temp: 5
   max_temp: 35
   discovery: true
@@ -48,6 +49,7 @@ schema:
   publish_on_change_only: bool?
   ducted_fans: int(0,2)
   hydro: bool
+  adaptive: bool?
   min_temp: float(5,20)
   max_temp: float(20,40)
   mqtt_host: str?
