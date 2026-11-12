@@ -14,12 +14,12 @@ Nouveautés :
 - Option `adaptive` (désactivée par défaut) : sur les poêles adaptatifs seulement, `select` **Profil de chauffe**
   (manual / dynamic / overnight / comfort / power) et switch **Mode adaptatif**, comme l'app MCZ.
   Sur les autres poêles, le capteur « Profil » est supprimé : il affichait une valeur sans signification (ex. « Power 110% »)
-- `number` **Minuterie sleep** (0–490 min) et températures **chrono T1 / T2 / T3**
+- `number` **Minuterie sleep** (0–490 min)
 - `button` **Réinitialiser Active** et **Mettre le poêle à l'heure**
-- `sensor` **Dernière alarme** avec historique horodaté (`C|RecuperaAllarmi`), **Programme chrono** du jour + semaine
-  en attributs (`C|RecuperoGiornoChrono`), **Firmware carte**, **Active température**, sondes WiFi 1–3
-- Commande `set/chrono_day` (`lundi|<24 hex>`) pour écrire la programmation d'un jour
-- Recettes, chrono et alarmes relus au démarrage, après écriture, à chaque nouvelle alarme puis toutes les 10 min
+- `sensor` **Dernière alarme** avec historique horodaté (`C|RecuperaAllarmi`), **Firmware carte**, **Active température**,
+  sondes WiFi 1–3
+- Chronothermostat retiré de Home Assistant (switch et réglages) : la programmation reste dans l'app MCZ
+- Recettes et alarmes relues au démarrage, après écriture, à chaque nouvelle alarme puis toutes les 10 min
 
 ## 1.1.2
 

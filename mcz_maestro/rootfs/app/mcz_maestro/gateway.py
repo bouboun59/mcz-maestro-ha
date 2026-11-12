@@ -93,14 +93,11 @@ class Gateway:
             if topic.startswith(self.t_set):
                 name = topic[len(self.t_set):]
                 if name == "refresh":
-                    self._extra_due = 0.0          # relit aussi recettes, chrono et alarmes
+                    self._extra_due = 0.0          # relit aussi recettes et alarmes
                     self._refresh_now.set()
                     return
                 if name == "sync_clock":
                     self.send_raw(P.clock_command())
-                    return
-                if name == "chrono_day":
-                    self.send_raw(P.chrono_day_command(payload))
                     return
                 cmds = P.build_commands(name, payload, self.cfg.auto_regulation, self._last_state)
             elif topic == self.t_raw or (self.cfg.legacy_enabled and topic == self.cfg.legacy_topic_sub):
@@ -125,7 +122,7 @@ class Gateway:
             self._cmd_q.put((param, value))
 
     def send_raw(self, msg: str) -> None:
-        """Commande brute (mise à l'heure, programmation chrono…), envoyée telle quelle."""
+        """Commande brute (mise à l'heure…), envoyée telle quelle."""
         self._cmd_q.put((self.RAW, msg))
 
     RAW = -1
@@ -155,7 +152,7 @@ class Gateway:
                 _LOG.error("Commande perdue (poêle injoignable) : %s", msg)
             time.sleep(self.cfg.command_delay)
             if param == self.RAW or param >= P.BANK_OFFSET or param in self._REREAD_EXTRA:
-                self._extra_due = 0.0          # relire recettes / chrono après écriture
+                self._extra_due = 0.0          # relire les recettes après écriture
             if self._cmd_q.empty():
                 time.sleep(1.0)
                 self._refresh_now.set()
@@ -167,10 +164,10 @@ class Gateway:
             self._refresh_now.clear()
             if self.transport.connected:
                 self.transport.send(P.INFO_REQUEST)
-                # recettes, chrono et alarmes : au démarrage, après écriture / alarme, puis /10 min
+                # recettes et alarmes : au démarrage, après écriture / alarme, puis /10 min
                 if time.time() >= self._extra_due:
                     self._extra_due = time.time() + 600
-                    for req in (P.EXTRA_REQUEST, P.CHRONO_REQUEST, P.ALARMS_REQUEST):
+                    for req in (P.EXTRA_REQUEST, P.ALARMS_REQUEST):
                         time.sleep(0.5)
                         self.transport.send(req)
                 ref = max(self._last_frame, self._connected_at)
@@ -191,7 +188,6 @@ class Gateway:
 
     def _on_frame(self, frame: str) -> None:
         for test, parse, label in ((P.is_extra_frame, P.parse_extra_frame, "Recettes"),
-                                   (P.is_chrono_frame, P.parse_chrono_frame, "Chrono"),
                                    (P.is_alarms_frame, P.parse_alarms_frame, "Alarmes")):
             if test(frame):
                 try:
@@ -303,7 +299,6 @@ class Gateway:
             ("eco", "Mode Eco", "eco_mode_sw", "eco", "mdi:leaf", None),
             ("silent", "Mode Silence", "silent_mode_sw", "silent", "mdi:volume-off", None),
             ("active", "Mode Active", "active_mode_sw", "active", "mdi:fire-circle", "config"),
-            ("chrono", "Chronothermostat", "chronostat_sw", "chrono", "mdi:calendar-clock", None),
             ("sound", "Effets sonores", "sound_effects_sw", "sound", "mdi:music", "config"),
             ("summer", "Mode été", "summer_sw", "summer", "mdi:weather-sunny", "config"),
             ("antifreeze", "Antigel", "antifreeze_sw", "antifreeze", "mdi:snowflake", "config"),
@@ -362,14 +357,11 @@ class Gateway:
                    value_template=self._vt("sleep_minutes"), command_topic=f"{s}sleep",
                    min=0, max=P.SLEEP_MAX_STEPS * 10, step=10, unit_of_measurement="min",
                    mode="box", icon="mdi:sleep")
-        # Températures du chronothermostat (T1 < T2 < T3)
-        for obj, name, (lo, hi) in (("chrono_t1", "Chrono T1", P.CHRONO_T_LIMITS[P.PARAM_CHRONO_T1]),
-                                    ("chrono_t2", "Chrono T2", P.CHRONO_T_LIMITS[P.PARAM_CHRONO_T2]),
-                                    ("chrono_t3", "Chrono T3", P.CHRONO_T_LIMITS[P.PARAM_CHRONO_T3])):
-            self._disc("number", obj, name, state_topic=st, value_template=self._vt(obj),
-                       command_topic=f"{s}{obj}", min=lo, max=hi, step=1, unit_of_measurement="°C",
-                       device_class="temperature", mode="box", icon="mdi:calendar-clock",
-                       entity_category="config")
+        # Chronothermostat non exposé (programmation laissée à l'app MCZ) : nettoyage d'anciennes configs
+        for obj in ("chrono_t1", "chrono_t2", "chrono_t3"):
+            self._remove("number", obj)
+        self._remove("sensor", "chrono_program")
+        self._remove("switch", "chrono")
 
         # ---- Boutons
         self._disc("button", "reset_alarm", "Acquitter l'alarme", command_topic=f"{s}reset_alarm",
@@ -426,13 +418,6 @@ class Gateway:
                 "json_attributes_topic": st,
                 "json_attributes_template": "{{ {'heure': value_json.last_alarm_time | default(none),"
                                             " 'historique': value_json.alarm_history | default([])} | tojson }}"}),
-            ("chrono_program", "Programme chrono (aujourd'hui)", "chrono_schedule", {
-                "icon": "mdi:calendar-week",
-                "value_template": "{% set j = ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'] %}"
-                                  "{{ value_json.chrono_schedule[j[now().weekday()]]"
-                                  " if value_json.chrono_schedule is defined else none }}",
-                "json_attributes_topic": st,
-                "json_attributes_template": "{{ value_json.chrono_schedule | default({}) | tojson }}"}),
         ]
         if not self.cfg.adaptive:
             # le champ « profil » n'a pas de sens hors mode adaptatif (affichait p. ex. « Power 110% »)
