@@ -93,9 +93,16 @@ class Gateway:
             if topic.startswith(self.t_set):
                 name = topic[len(self.t_set):]
                 if name == "refresh":
+                    self._extra_due = 0.0          # relit aussi recettes, chrono et alarmes
                     self._refresh_now.set()
                     return
-                cmds = P.build_commands(name, payload, self.cfg.auto_regulation)
+                if name == "sync_clock":
+                    self.send_raw(P.clock_command())
+                    return
+                if name == "chrono_day":
+                    self.send_raw(P.chrono_day_command(payload))
+                    return
+                cmds = P.build_commands(name, payload, self.cfg.auto_regulation, self._last_state)
             elif topic == self.t_raw or (self.cfg.legacy_enabled and topic == self.cfg.legacy_topic_sub):
                 cmds = P.parse_legacy_commands(payload)
             else:
@@ -117,28 +124,38 @@ class Gateway:
         if not already:
             self._cmd_q.put((param, value))
 
+    def send_raw(self, msg: str) -> None:
+        """Commande brute (mise à l'heure, programmation chrono…), envoyée telle quelle."""
+        self._cmd_q.put((self.RAW, msg))
+
+    RAW = -1
+    _REREAD_EXTRA = {P.PARAM_CHRONO_T1, P.PARAM_CHRONO_T2, P.PARAM_CHRONO_T3}
+
     def _command_worker(self) -> None:
         while not self._stop.is_set():
             item = self._cmd_q.get()
             if item is None:
                 return
-            param, _ = item
+            param, raw_msg = item
             # attendre que le poêle soit joignable (max 2 min, sinon on abandonne)
             deadline = time.time() + 120
             while not self.transport.connected and time.time() < deadline and not self._stop.is_set():
                 time.sleep(1)
-            with self._pending_lock:
-                value = self._pending.pop(param, None)
-            if value is None:
-                continue
-            msg = P.write_param(param, value)
+            if param == self.RAW:
+                msg = str(raw_msg)
+            else:
+                with self._pending_lock:
+                    value = self._pending.pop(param, None)
+                if value is None:
+                    continue
+                msg = P.write_param(param, value)
             if self.transport.send(msg):
                 _LOG.info("Poêle >> %s", msg)
             else:
                 _LOG.error("Commande perdue (poêle injoignable) : %s", msg)
             time.sleep(self.cfg.command_delay)
-            if param >= P.BANK_OFFSET:
-                self._extra_due = 0.0          # relire les recettes après écriture
+            if param == self.RAW or param >= P.BANK_OFFSET or param in self._REREAD_EXTRA:
+                self._extra_due = 0.0          # relire recettes / chrono après écriture
             if self._cmd_q.empty():
                 time.sleep(1.0)
                 self._refresh_now.set()
@@ -150,10 +167,12 @@ class Gateway:
             self._refresh_now.clear()
             if self.transport.connected:
                 self.transport.send(P.INFO_REQUEST)
-                if time.time() >= self._extra_due:   # recettes : au démarrage, après écriture, puis /10 min
+                # recettes, chrono et alarmes : au démarrage, après écriture / alarme, puis /10 min
+                if time.time() >= self._extra_due:
                     self._extra_due = time.time() + 600
-                    time.sleep(0.5)
-                    self.transport.send(P.EXTRA_REQUEST)
+                    for req in (P.EXTRA_REQUEST, P.CHRONO_REQUEST, P.ALARMS_REQUEST):
+                        time.sleep(0.5)
+                        self.transport.send(req)
                 ref = max(self._last_frame, self._connected_at)
                 if ref and time.time() - ref > self._stale_after:
                     _LOG.warning("Aucune trame depuis %.0f s, reconnexion", time.time() - ref)
@@ -171,15 +190,22 @@ class Gateway:
             self._refresh_now.set()
 
     def _on_frame(self, frame: str) -> None:
-        if P.is_extra_frame(frame):
-            extra = P.parse_extra_frame(frame)
-            if extra and extra != self._extra:
-                _LOG.info("Recettes : %s", extra)
-                self._extra = extra
-                if self._last_state:
-                    self._last_state.update(extra)
-                    self.mqtt.publish(self.t_state, json.dumps(self._last_state), qos=1, retain=True)
-            return
+        for test, parse, label in ((P.is_extra_frame, P.parse_extra_frame, "Recettes"),
+                                   (P.is_chrono_frame, P.parse_chrono_frame, "Chrono"),
+                                   (P.is_alarms_frame, P.parse_alarms_frame, "Alarmes")):
+            if test(frame):
+                try:
+                    extra = parse(frame)
+                except Exception:  # noqa: BLE001
+                    _LOG.exception("%s : trame illisible %s", label, frame[:80])
+                    return
+                if extra and any(self._extra.get(k) != v for k, v in extra.items()):
+                    _LOG.info("%s : %s", label, extra)
+                    self._extra.update(extra)
+                    if self._last_state:
+                        self._last_state.update(extra)
+                        self.mqtt.publish(self.t_state, json.dumps(self._last_state), qos=1, retain=True)
+                return
         if not P.is_info_frame(frame):
             _LOG.debug("Trame ignorée : %s", str(frame)[:60])
             return
@@ -189,6 +215,8 @@ class Gateway:
             _LOG.exception("Trame illisible : %s", frame)
             return
         self._last_frame = time.time()
+        if modern.get("alarm") == "ON" and self._last_state.get("alarm") != "ON":
+            self._extra_due = 0.0              # nouvelle alarme : relire l'historique
         modern.update(self._extra)
         modern["connection_mode"] = self.cfg.connection_mode
         modern["last_update"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -300,6 +328,19 @@ class Gateway:
         self._disc("select", "regulation", "Régulation", state_topic=st,
                    value_template=self._vt("regulation"), command_topic=f"{s}regulation",
                    options=["auto", "manual"], icon="mdi:thermostat-auto")
+        # Profil de chauffe (cellule 149) : uniquement sur les poêles adaptatifs, comme l'app MCZ.
+        # Sur les autres, l'app n'offre que Manual / Dynamic = select « Régulation » (cellule 40).
+        if self.cfg.adaptive:
+            self._disc("select", "profile_mode", "Profil de chauffe", state_topic=st,
+                       value_template=self._vt("profile_mode"), command_topic=f"{s}profile",
+                       options=P.PROFILE_OPTIONS, icon="mdi:tune-variant")
+            self._disc("switch", "adaptive", "Mode adaptatif", state_topic=st,
+                       value_template=self._vt("adaptive_sw"), command_topic=f"{s}adaptive",
+                       payload_on="ON", payload_off="OFF", state_on="ON", state_off="OFF",
+                       icon="mdi:brain", entity_category="config")
+        else:
+            self._remove("select", "profile_mode")
+            self._remove("switch", "adaptive")
         fans = [("fan_ambient", "Ventilation ambiance")]
         if self.cfg.ducted_fans >= 1:
             fans.append(("fan_ducted1", "Ventilation canalisée 1"))
@@ -316,10 +357,27 @@ class Gateway:
                    command_topic=f"{s}setpoint", min=self.cfg.min_temp, max=self.cfg.max_temp,
                    step=0.5, unit_of_measurement="°C", device_class="temperature", mode="box",
                    icon="mdi:thermometer")
+        # Minuterie sleep : extinction dans N minutes (pas de 10 min, 0 = désactivée)
+        self._disc("number", "sleep", "Minuterie sleep", state_topic=st,
+                   value_template=self._vt("sleep_minutes"), command_topic=f"{s}sleep",
+                   min=0, max=P.SLEEP_MAX_STEPS * 10, step=10, unit_of_measurement="min",
+                   mode="box", icon="mdi:sleep")
+        # Températures du chronothermostat (T1 < T2 < T3)
+        for obj, name, (lo, hi) in (("chrono_t1", "Chrono T1", P.CHRONO_T_LIMITS[P.PARAM_CHRONO_T1]),
+                                    ("chrono_t2", "Chrono T2", P.CHRONO_T_LIMITS[P.PARAM_CHRONO_T2]),
+                                    ("chrono_t3", "Chrono T3", P.CHRONO_T_LIMITS[P.PARAM_CHRONO_T3])):
+            self._disc("number", obj, name, state_topic=st, value_template=self._vt(obj),
+                       command_topic=f"{s}{obj}", min=lo, max=hi, step=1, unit_of_measurement="°C",
+                       device_class="temperature", mode="box", icon="mdi:calendar-clock",
+                       entity_category="config")
 
         # ---- Boutons
         self._disc("button", "reset_alarm", "Acquitter l'alarme", command_topic=f"{s}reset_alarm",
                    payload_press="1", icon="mdi:alarm-light-off", entity_category="config")
+        self._disc("button", "reset_active", "Réinitialiser Active", command_topic=f"{s}reset_active",
+                   payload_press="1", icon="mdi:restore", entity_category="config")
+        self._disc("button", "sync_clock", "Mettre le poêle à l'heure", command_topic=f"{s}sync_clock",
+                   payload_press="1", icon="mdi:clock-check-outline", entity_category="config")
         self._disc("button", "refresh", "Rafraîchir", command_topic=f"{s}refresh",
                    payload_press="1", icon="mdi:refresh", entity_category="diagnostic")
 
@@ -358,7 +416,32 @@ class Gateway:
              {"icon": "mdi:clock-outline", "entity_category": "diagnostic"}),
             ("connection_mode", "Mode de connexion", "connection_mode",
              {"icon": "mdi:lan-connect", "entity_category": "diagnostic"}),
+            ("firmware", "Firmware carte", "firmware",
+             {"icon": "mdi:chip", "entity_category": "diagnostic"}),
+            ("active_temperature", "Active température", "active_temperature",
+             {**temp, "entity_category": "diagnostic"}),
+            ("last_alarm", "Dernière alarme", "last_alarm", {
+                "icon": "mdi:alert-circle-outline",
+                "value_template": "{{ value_json.last_alarm if value_json.last_alarm is defined else 'Aucune' }}",
+                "json_attributes_topic": st,
+                "json_attributes_template": "{{ {'heure': value_json.last_alarm_time | default(none),"
+                                            " 'historique': value_json.alarm_history | default([])} | tojson }}"}),
+            ("chrono_program", "Programme chrono (aujourd'hui)", "chrono_schedule", {
+                "icon": "mdi:calendar-week",
+                "value_template": "{% set j = ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'] %}"
+                                  "{{ value_json.chrono_schedule[j[now().weekday()]]"
+                                  " if value_json.chrono_schedule is defined else none }}",
+                "json_attributes_topic": st,
+                "json_attributes_template": "{{ value_json.chrono_schedule | default({}) | tojson }}"}),
         ]
+        if not self.cfg.adaptive:
+            # le champ « profil » n'a pas de sens hors mode adaptatif (affichait p. ex. « Power 110% »)
+            sensors = [x for x in sensors if x[0] != "profile"]
+            self._remove("sensor", "profile")
+        for i in (1, 2, 3):
+            sensors.append((f"wifi_probe{i}", f"Sonde WiFi {i}", f"wifi_probe{i}", {
+                **temp, "entity_category": "diagnostic", "enabled_by_default": False,
+                "value_template": f"{{{{ value_json.wifi_probe{i} if value_json.wifi_probe{i} is defined else none }}}}"}))
         if self.cfg.hydro:
             sensors += [
                 ("boiler_temperature", "Température chaudière", "boiler_temperature", temp),

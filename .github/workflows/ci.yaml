@@ -41,6 +41,8 @@ jobs:
             --test \
             --${{ matrix.arch }} \
             --target /data/mcz_maestro \
+            --docker-hub local \
+            --image "mcz-maestro-ha-{arch}" \
             --addon
 
   version-bump:

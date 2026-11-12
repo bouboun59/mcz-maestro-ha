@@ -5,13 +5,18 @@ Le même protocole texte est utilisé en local (websocket ws://<poele>:81) et en
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any
 
 INFO_REQUEST = "C|RecuperoInfo"
 EXTRA_REQUEST = "C|RecuperoParametriExtra|11"
+CHRONO_REQUEST = "C|RecuperoGiornoChrono"
+ALARMS_REQUEST = "C|RecuperaAllarmi"
 MSG_TYPE_INFO = "01"
 MSG_TYPE_EXTRA = "03"
+MSG_TYPE_CHRONO = "04"
+MSG_TYPE_ALARMS = "0A"
 
 # --------------------------------------------------------------------------- #
 # États du poêle : code -> (libellé FR, allumé ?)
@@ -74,6 +79,11 @@ PELLET = {0: "Sonde pas active", 10: "Niveau suffisant", 11: "Niveau presque vid
 BRAZIER = {0: "OK", 100: "Fermeture brazero", 101: "Ouverture brazero"}
 REGULATION = {0: "Manuelle", 1: "Dynamique"}
 SEASON = {0: "Hiver", 1: "Ete"}
+UNIT = {0: "Celsius", 1: "Fahrenheit"}
+# Profil (cellule 149) : valeur 0-4, +10 quand le mode adaptatif est actif
+PROFILE_OPTIONS = ["manual", "dynamic", "overnight", "comfort", "power"]
+SLEEP_MAX_STEPS = 49          # 49 x 10 min, comme l'app MCZ
+PROBE_ABSENT = 250            # >= 250 : sonde absente / thermostat externe
 POWER_ACTIVE = {11: "Puissance 1", 12: "Puissance 2", 13: "Puissance 3",
                 14: "Puissance 4", 15: "Puissance 5"}
 
@@ -83,7 +93,7 @@ class Field:
     index: int          # position dans la trame "01|..."
     key: str            # clé JSON « moderne » (topic <base>/state)
     legacy: str         # libellé historique (JSON Maestro/State du script cloud)
-    kind: str = "int"   # int | temp | seconds | map
+    kind: str = "int"   # int | temp | probe | seconds | map
     mapping: dict | None = None
 
 
@@ -128,14 +138,17 @@ FIELDS: list[Field] = [
     Field(43, "hours_to_service", "Heures avant entretien"),
     Field(44, "minutes_to_switch_off", "Minutes avant extinction"),
     Field(45, "ignitions", "Nombre d'allumages"),
+    Field(46, "active_temperature", "ACTIVE - Temperature", "temp"),
     Field(47, "pellet_sensor", "Sonde Pellets", "map", PELLET),
-    Field(48, "sound_effects", "Effet sonore", "map", ON_OFF),
-    Field(49, "sound_effects_state", "Etat effets sonores", "map", ON_OFF),
-    Field(50, "sleep", "Sleep", "map", ON_OFF),
+    # 48 = unité d'affichage (0 °C, 1 °F) — était lu à tort comme « effets sonores »
+    Field(48, "temperature_unit", "Unite de temperature", "map", UNIT),
+    Field(49, "sound_effects", "Effet sonore", "map", ON_OFF),
+    # 50 = minuterie sleep en pas de 10 min (0 = désactivée), pas un simple on/off
+    Field(50, "sleep", "Sleep (pas de 10 min)"),
     Field(51, "season", "Mode", "map", SEASON),
-    Field(52, "wifi_probe1", "Sonde wifi temperature 1"),
-    Field(53, "wifi_probe2", "Sonde wifi temperature 2"),
-    Field(54, "wifi_probe3", "Sonde wifi temperature 3"),
+    Field(52, "wifi_probe1", "Sonde wifi temperature 1", "probe"),
+    Field(53, "wifi_probe2", "Sonde wifi temperature 2", "probe"),
+    Field(54, "wifi_probe3", "Sonde wifi temperature 3", "probe"),
     Field(55, "unknown_55", "Inconnu"),
     Field(56, "set_puffer", "Set Puffer"),
     Field(57, "set_boiler", "Set Boiler"),
@@ -189,6 +202,125 @@ def parse_extra_frame(message: str) -> dict[str, Any]:
     return out
 
 
+# --------------------------------------------------------------------------- #
+# Chronothermostat : C|RecuperoGiornoChrono -> 04|<lun..dim : 7 x 24 hex>|T1|T2|T3
+# Chaque jour = 48 créneaux de 30 min x 2 bits (00 off, 01 T1, 10 T2, 11 T3).
+# Écriture d'un jour : C|ScriviGiornoChrono|<jour 0-6>|<24 hex>
+# Températures T1 < T2 < T3 (°C entiers) : WriteParametri 1108 / 1109 / 1110
+# --------------------------------------------------------------------------- #
+PARAM_CHRONO_T1, PARAM_CHRONO_T2, PARAM_CHRONO_T3 = 1108, 1109, 1110
+CHRONO_T_LIMITS = {PARAM_CHRONO_T1: (5, 33), PARAM_CHRONO_T2: (6, 34), PARAM_CHRONO_T3: (7, 35)}
+CHRONO_DAYS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+_SLOT_LABEL = {0: "off", 1: "T1", 2: "T2", 3: "T3"}
+
+
+def is_chrono_frame(message: str) -> bool:
+    return isinstance(message, str) and message.split("|", 1)[0] == MSG_TYPE_CHRONO
+
+
+def decode_chrono_day(hexday: str) -> list[int]:
+    """24 caractères hex -> 48 créneaux (0-3)."""
+    bits = "".join(format(int(hexday[i:i + 2], 16), "08b") for i in range(0, len(hexday), 2))
+    return [int(bits[i:i + 2], 2) for i in range(0, len(bits), 2)]
+
+
+def encode_chrono_day(slots: list[int]) -> str:
+    if len(slots) != 48 or any(s not in (0, 1, 2, 3) for s in slots):
+        raise ValueError("48 créneaux de 0 à 3 attendus")
+    bits = "".join(format(s, "02b") for s in slots)
+    return "".join(format(int(bits[i:i + 8], 2), "02x") for i in range(0, 96, 8))
+
+
+def _chrono_ranges(slots: list[int]) -> str:
+    """Résumé lisible : « 06:00-08:30 T2, 17:00-22:00 T3 »."""
+    out, start = [], None
+    for i in range(49):
+        cur = slots[i] if i < 48 else -1
+        prev = slots[i - 1] if i > 0 else -1
+        if cur != prev:
+            if start is not None and prev > 0:
+                out.append(f"{start // 2:02d}:{30 * (start % 2):02d}-{i // 2:02d}:{30 * (i % 2):02d} "
+                           f"{_SLOT_LABEL[prev]}")
+            start = i
+    return ", ".join(out) or "off"
+
+
+def parse_chrono_frame(message: str) -> dict[str, Any]:
+    raw = message.strip().split("|")[1:]
+    out: dict[str, Any] = {}
+    days: dict[str, str] = {}
+    raw_days: dict[str, str] = {}
+    for d, name in enumerate(CHRONO_DAYS):
+        if d < len(raw) and len(raw[d]) == 24:
+            try:
+                slots = decode_chrono_day(raw[d])
+            except ValueError:
+                continue
+            days[name] = _chrono_ranges(slots)
+            raw_days[name] = raw[d].lower()
+    if days:
+        out["chrono_schedule"] = days
+        out["chrono_schedule_raw"] = raw_days
+    for i, key in ((7, "chrono_t1"), (8, "chrono_t2"), (9, "chrono_t3")):
+        if i < len(raw):
+            try:
+                out[key] = int(raw[i], 16)
+            except ValueError:
+                pass
+    return out
+
+
+def chrono_day_command(payload: str) -> str:
+    """Payload « <jour 0-6>|<24 hex> » ou « lundi|<24 hex> » -> commande brute."""
+    day, _, hexday = str(payload).strip().partition("|")
+    day = day.strip().lower()
+    d = CHRONO_DAYS.index(day) if day in CHRONO_DAYS else int(day)
+    if not 0 <= d <= 6:
+        raise ValueError("jour hors plage 0-6")
+    hexday = hexday.strip().lower()
+    decode_chrono_day(hexday)                     # valide le format
+    if len(hexday) != 24:
+        raise ValueError("24 caractères hexadécimaux attendus")
+    return f"C|ScriviGiornoChrono|{d}|{hexday}"
+
+
+# --------------------------------------------------------------------------- #
+# Historique des alarmes : C|RecuperaAllarmi -> 0A|<code>|<timestamp>|<code>|<timestamp>...
+# (timestamp = heure locale du poêle encodée comme un epoch UTC ; ffffffff = vide)
+# --------------------------------------------------------------------------- #
+def is_alarms_frame(message: str) -> bool:
+    return isinstance(message, str) and message.split("|", 1)[0] == MSG_TYPE_ALARMS
+
+
+def parse_alarms_frame(message: str) -> dict[str, Any]:
+    raw = message.strip().split("|")[1:]
+    alarms = []
+    for i in range(0, len(raw) - 1, 2):
+        if raw[i + 1].lower() == "ffffffff":
+            continue
+        try:
+            code, ts = int(raw[i], 16), int(raw[i + 1], 16)
+        except ValueError:
+            continue
+        label = STOVE_STATES.get(code, (f"Code inconnu : {code}", False))[0]
+        alarms.append({"code": code, "label": label,
+                       "time": time.strftime("%Y-%m-%d %H:%M", time.gmtime(ts)), "_ts": ts})
+    alarms.sort(key=lambda a: a["_ts"], reverse=True)
+    for a in alarms:
+        a.pop("_ts")
+    out: dict[str, Any] = {"alarm_history": alarms}
+    if alarms:
+        out["last_alarm"] = alarms[0]["label"]
+        out["last_alarm_time"] = alarms[0]["time"]
+    return out
+
+
+def clock_command(t: time.struct_time | None = None) -> str:
+    """Mise à l'heure : C|SalvaDataOra|JJMMAAAAHHMM (heure locale)."""
+    t = t or time.localtime()
+    return "C|SalvaDataOra|" + time.strftime("%d%m%Y%H%M", t)
+
+
 def _recipe(cell: int, opts: list[str]):
     def build(payload: str) -> list[tuple[int, int]]:
         p = str(payload).strip()
@@ -218,7 +350,10 @@ def parse_info_frame(message: str) -> tuple[dict[str, Any], dict[str, Any]]:
             continue
 
         # ---- valeur moderne (numérique, exploitable directement par HA)
-        if f.kind == "temp":
+        if f.kind == "probe":
+            if val < PROBE_ABSENT:          # sonde absente : on n'invente pas de température
+                modern[f.key] = val / 2
+        elif f.kind == "temp":
             modern[f.key] = val / 2
         elif f.kind == "seconds":
             modern[f.key] = val
@@ -228,7 +363,7 @@ def parse_info_frame(message: str) -> tuple[dict[str, Any], dict[str, Any]]:
         # ---- valeur historique (identique à l'ancien script cloud)
         if f.mapping is not None:
             legacy[f.legacy] = f.mapping.get(val, f"Code inconnu : {val}")
-        elif f.index in _LEGACY_HALF:
+        elif f.index in _LEGACY_HALF or f.kind == "probe":
             legacy[f.legacy] = val / 2
         elif 37 <= f.index <= 42:
             legacy[f.legacy] = _dhms(val)
@@ -268,8 +403,26 @@ def parse_info_frame(message: str) -> tuple[dict[str, Any], dict[str, Any]]:
     if "regulation_mode" in modern:
         modern["regulation"] = "auto" if modern["regulation_mode"] == 1 else "manual"
 
+    prof = modern.get("profile")
+    if prof is not None:
+        base = prof % 10
+        if base < len(PROFILE_OPTIONS):
+            modern["profile_mode"] = PROFILE_OPTIONS[base]
+        modern["adaptive_sw"] = "ON" if prof >= 10 else "OFF"
+
+    if "sleep" in modern:
+        modern["sleep_minutes"] = modern["sleep"] * 10
+        modern["sleep_sw"] = "ON" if modern["sleep"] > 0 else "OFF"
+
+    # version du firmware de la carte : 2 octets « MMmm » (ex. 0109 -> 1.9)
+    if len(raw) > 30 and len(raw[30]) == 4:
+        try:
+            modern["firmware"] = f"{int(raw[30][:2], 16)}.{int(raw[30][2:], 16)}"
+        except ValueError:
+            pass
+
     for key in ("eco_mode", "silent_mode", "active_mode", "chronostat", "sound_effects",
-                "sleep", "antifreeze", "candle"):
+                "antifreeze", "candle"):
         if key in modern:
             modern[f"{key}_sw"] = "ON" if modern[key] == 1 else "OFF"
     if "season" in modern:
@@ -305,10 +458,12 @@ PARAM_BOILER_SETPOINT = 51
 PARAM_SLEEP = 57
 PARAM_SUMMER = 58
 PARAM_PELLET_SENSOR = 148
-PARAM_ADAPTIVE = 149
+PARAM_PROFILE = 149          # 0 manuel, 1 dynamic, 2 overnight, 3 comfort, 4 power (+10 adaptatif)
+PARAM_ADAPTIVE = PARAM_PROFILE
 PARAM_ANTIFREEZE = 154
 PARAM_CHRONO = 1111
 PARAM_RESET_ALARM = 1
+PARAM_RESET_ACTIVE = 2
 
 
 def write_param(param_id: int, value: int) -> str:
@@ -346,9 +501,51 @@ def _onoff(param: int):
     return lambda p: [(param, 1 if _truthy(p) else 0)]
 
 
-def build_commands(name: str, payload: str, auto_regulation: bool = True) -> list[tuple[int, int]]:
-    """Traduit une commande MQTT « nommée » en liste de (paramètre, valeur)."""
+def _sleep(payload: str) -> int:
+    """Minutes avant extinction (0 = désactivé), arrondies au pas de 10 min de l'app MCZ."""
+    p = str(payload).strip().lower()
+    if p in ("off", "false", "0", ""):
+        return 0
+    steps = int(round(float(p) / 10))
+    if not 1 <= steps <= SLEEP_MAX_STEPS:
+        raise ValueError(f"sleep hors plage 10-{SLEEP_MAX_STEPS * 10} min")
+    return steps
+
+
+def _profile(payload: str, state: dict) -> int:
+    p = str(payload).strip().lower()
+    idx = PROFILE_OPTIONS.index(p) if p in PROFILE_OPTIONS else int(float(p))
+    if not 0 <= idx < len(PROFILE_OPTIONS):
+        raise ValueError(f"profil attendu parmi {PROFILE_OPTIONS}")
+    adaptive = (state.get("profile") or 0) >= 10     # on conserve l'état du mode adaptatif
+    return idx + (10 if adaptive else 0)
+
+
+def _adaptive(payload: str, state: dict) -> int:
+    base = (state.get("profile") or 0) % 10
+    return base + (10 if _truthy(payload) else 0)
+
+
+def _chrono_temp(param: int):
+    lo, hi = CHRONO_T_LIMITS[param]
+
+    def build(payload: str) -> list[tuple[int, int]]:
+        v = int(round(float(payload)))
+        if not lo <= v <= hi:
+            raise ValueError(f"température chrono hors plage {lo}-{hi} °C")
+        return [(param, v)]
+    return build
+
+
+def build_commands(name: str, payload: str, auto_regulation: bool = True,
+                   state: dict | None = None) -> list[tuple[int, int]]:
+    """Traduit une commande MQTT « nommée » en liste de (paramètre, valeur).
+
+    `state` = dernier état décodé, utilisé quand la valeur à écrire dépend de l'état actuel
+    (profil + mode adaptatif partagent la cellule 149).
+    """
     name = name.strip().lower()
+    state = state or {}
     table = {
         "power": lambda p: [(PARAM_POWER, 1 if _truthy(p) else 40)],
         "hvac_mode": lambda p: [(PARAM_POWER, 1 if _truthy(p) else 40)],
@@ -363,14 +560,19 @@ def build_commands(name: str, payload: str, auto_regulation: bool = True) -> lis
         "silent": _onoff(PARAM_SILENT),
         "active": _onoff(PARAM_ACTIVE),
         "sound": _onoff(PARAM_SOUND),
-        "sleep": _onoff(PARAM_SLEEP),
+        "sleep": lambda p: [(PARAM_SLEEP, _sleep(p))],
         "summer": _onoff(PARAM_SUMMER),
         "chrono": _onoff(PARAM_CHRONO),
+        "chrono_t1": _chrono_temp(PARAM_CHRONO_T1),
+        "chrono_t2": _chrono_temp(PARAM_CHRONO_T2),
+        "chrono_t3": _chrono_temp(PARAM_CHRONO_T3),
         "antifreeze": _onoff(PARAM_ANTIFREEZE),
-        "adaptive": _onoff(PARAM_ADAPTIVE),
+        "profile": lambda p: [(PARAM_PROFILE, _profile(p, state))],
+        "adaptive": lambda p: [(PARAM_PROFILE, _adaptive(p, state))],
         "pellet_sensor": _onoff(PARAM_PELLET_SENSOR),
         "boiler_setpoint": lambda p: [(PARAM_BOILER_SETPOINT, _temp(p))],
         "reset_alarm": lambda p: [(PARAM_RESET_ALARM, 255)],
+        "reset_active": lambda p: [(PARAM_RESET_ACTIVE, 255)],
         "air_recipe": _recipe(BANK_AIR_RECIPE, AIR_RECIPE_OPTIONS),
         "pellet_recipe": _recipe(BANK_PELLET_RECIPE, PELLET_RECIPE_OPTIONS),
     }

@@ -32,6 +32,9 @@ configuration:
   hydro:
     name: Poêle hydro
     description: Expose les températures chaudière / puffer / retour
+  adaptive:
+    name: Poêle adaptatif
+    description: À activer seulement si l'app MCZ propose les modes Comfort / Overnight / Power. Sinon, utilisez « Régulation » (manuel / auto = Dynamic)
   min_temp:
     name: Consigne mini (°C)
   max_temp:

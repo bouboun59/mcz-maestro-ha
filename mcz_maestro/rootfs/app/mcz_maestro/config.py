@@ -26,6 +26,7 @@ class Config:
     auto_regulation: bool = True
     publish_on_change_only: bool = False
     hydro: bool = False
+    adaptive: bool = False                 # poêle avec mode adaptatif (profils Comfort / Overnight / Power)
     ducted_fans: int = 0
     min_temp: float = 5.0
     max_temp: float = 35.0
