@@ -40,10 +40,15 @@ Le broker MQTT est récupéré automatiquement depuis l'add-on Mosquitto : laiss
 
 - `climate` : marche/arrêt, consigne (pas de 0,5 °C), température ambiante, ventilation ambiance
 - `switch` : marche, Eco, Silence, Chronothermostat, Active, effets sonores, mode été, antigel
-- `select` : puissance 1–5, régulation auto/manuel, ventilation ambiance (+ canalisées selon `ducted_fans`)
-- `number` : consigne ; `button` : acquitter l'alarme, rafraîchir
-- `sensor` : état, températures (ambiante, fumées, carte mère), profil, heures de fonctionnement,
-  heures avant entretien, nb d'allumages, RPM extracteur / vis sans fin, horloge du poêle…
+- `select` : puissance 1–5, régulation auto/manuel, **profil de chauffe** (manual / dynamic / overnight /
+  comfort / power), ventilation ambiance (+ canalisées selon `ducted_fans`)
+- `number` : consigne, **minuterie sleep** (0–490 min, pas de 10 min), **températures chrono T1 / T2 / T3**
+- `button` : acquitter l'alarme, **réinitialiser Active**, **mettre le poêle à l'heure**, rafraîchir
+- `sensor` : état, températures (ambiante, fumées, carte mère, Active), profil, heures de fonctionnement,
+  heures avant entretien, nb d'allumages, RPM extracteur / vis sans fin, horloge du poêle, **firmware**,
+  **dernière alarme** (+ historique horodaté en attributs), **programme chrono du jour** (+ semaine en attributs),
+  sondes WiFi 1–3 (désactivées par défaut)
+- `switch` (désactivé par défaut) : **mode adaptatif**, à n'activer que si votre poêle le propose dans l'app MCZ
 - `binary_sensor` : en chauffe, alarme, pellets bas, bougie, connexion poêle
 
 Réglages de combustion (`select`, catégorie configuration) : **Recette air** (-2 à +2) et **Recette granulés** (-3 à +3).
@@ -60,7 +65,7 @@ Changer la **puissance** passe toujours le poêle en régulation **manuelle** (s
 |---|---|---|
 | `mcz_maestro/state` | publié | JSON complet (retenu) |
 | `mcz_maestro/bridge/status` / `mcz_maestro/stove/status` | publié | `online` / `offline` |
-| `mcz_maestro/set/<commande>` | commande | `power`, `setpoint`, `power_level`, `fan_ambient`, `fan_ducted1`, `fan_ducted2`, `regulation`, `eco`, `silent`, `active`, `chrono`, `sound`, `sleep`, `summer`, `antifreeze`, `adaptive`, `pellet_sensor`, `boiler_setpoint`, `air_recipe` (-2…+2), `pellet_recipe` (-3…+3), `reset_alarm`, `refresh` |
+| `mcz_maestro/set/<commande>` | commande | `power`, `setpoint`, `power_level`, `fan_ambient`, `fan_ducted1`, `fan_ducted2`, `regulation`, `profile` (manual…power), `eco`, `silent`, `active`, `chrono`, `chrono_t1`/`t2`/`t3` (°C), `chrono_day` (`lundi|<24 hex>`), `sound`, `sleep` (minutes, 0 = off), `summer`, `antifreeze`, `adaptive`, `pellet_sensor`, `boiler_setpoint`, `air_recipe` (-2…+2), `pellet_recipe` (-3…+3), `reset_alarm`, `reset_active`, `sync_clock`, `refresh` |
 | `mcz_maestro/raw_command` | commande | brut `id,valeur` ou multiple `id,valeur;id,valeur` |
 
 ### Compatibilité avec l'ancien add-on (`legacy_enabled`, **désactivé par défaut**)
@@ -81,7 +86,14 @@ Changer la **puissance** passe toujours le poêle en régulation **manuelle** (s
 | 41 / 45 / 35 | Eco / Silence / Active | 0 / 1 |
 | 42 | Consigne | °C (×2 appliqué automatiquement) |
 | 1111 | Chronothermostat | 0 / 1 |
+| 1108 / 1109 / 1110 | Températures chrono T1 / T2 / T3 | °C entiers, T1 < T2 < T3 |
+| 149 | Profil | 0 manuel, 1 dynamic, 2 overnight, 3 comfort, 4 power (+10 = adaptatif) |
+| 57 | Sleep | pas de 10 min (1–49), 0 = désactivé |
+| 50 / 58 / 154 / 148 | Effets sonores / été / antigel / sonde pellet | 0 / 1 |
 | 1 | Acquittement alarme | 255 |
+| 2 | Réinitialisation Active | 255 |
+
+⚠️ Les cellules techniques (0, 46, 47, 48, 55 : boot, reset usine, menu technique) ne sont volontairement pas exposées.
 
 ## Coexistence avec l'ancien add-on
 

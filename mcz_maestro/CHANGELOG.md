@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.0
+
+Protocole revérifié champ par champ sur l'application MCZ Maestro officielle.
+
+Corrections :
+- **Effets sonores** : le switch lisait l'unité °C/°F (champ 48) au lieu des effets sonores (champ 49)
+- **Sleep** : c'est une minuterie en pas de 10 min, pas un on/off (`sleep ON` programmait une extinction dans 10 min)
+- **Sondes WiFi** : valeurs divisées par 2 (°C) et ignorées quand la sonde est absente
+- **Cellule 149** : c'est le profil de chauffe (0–4, +10 adaptatif), plus un simple on/off
+
+Nouveautés :
+- `select` **Profil de chauffe** (manual / dynamic / overnight / comfort / power) et switch **Mode adaptatif** (désactivé par défaut)
+- `number` **Minuterie sleep** (0–490 min) et températures **chrono T1 / T2 / T3**
+- `button` **Réinitialiser Active** et **Mettre le poêle à l'heure**
+- `sensor` **Dernière alarme** avec historique horodaté (`C|RecuperaAllarmi`), **Programme chrono** du jour + semaine
+  en attributs (`C|RecuperoGiornoChrono`), **Firmware carte**, **Active température**, sondes WiFi 1–3
+- Commande `set/chrono_day` (`lundi|<24 hex>`) pour écrire la programmation d'un jour
+- Recettes, chrono et alarmes relus au démarrage, après écriture, à chaque nouvelle alarme puis toutes les 10 min
+
 ## 1.1.2
 
 - Choisir une puissance passe toujours le poêle en régulation manuelle (sinon la commande était ignorée)
